@@ -1,5 +1,29 @@
 import streamlit as st
 
+# --- BLOQUE DE SEGURIDAD ---
+def check_password():
+    """Retorna True si el usuario introdujo la clave correcta."""
+    def password_entered():
+        if st.session_state["password_input"] == st.secrets["password"]:
+            st.session_state["password_correct"] = True
+            del st.session_state["password_input"]
+        else:
+            st.session_state["password_correct"] = False
+
+    if "password_correct" not in st.session_state:
+        st.text_input("Acceso Protegido - Ingrese Clave", type="password", on_change=password_entered, key="password_input")
+        return False
+    elif not st.session_state["password_correct"]:
+        st.text_input("Acceso Protegido - Ingrese Clave", type="password", on_change=password_entered, key="password_input")
+        st.error("😕 Clave incorrecta")
+        return False
+    else:
+        return True
+
+# Esta línea es la que bloquea todo lo demás
+if not check_password():
+    st.stop()
+
 # Configuración estética
 st.set_page_config(page_title="Maravi Surebet Calc", page_icon="💰")
 
