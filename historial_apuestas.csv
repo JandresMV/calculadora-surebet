@@ -1,3 +1,7 @@
-ID,Fecha,Casa_1,Cuota_1,Apuesta_1,Casa_2,Cuota_2,Apuesta_2,Inversion_Total,Estado,Ganador Final,Retorno Final,Rentabilidad
-20260320001,2026-03-20 20:13,1xBet,2.0,51000,Betano,2.12,49000,100000,Cerrada,Betano,3880.0,3.88
-20260320002,2026-03-20 20:13,Codere,2.32,45000,Wplay,1.89,55000,100000,Cerrada,Wplay,3950.0,3.95
+ID,Fecha,Casa_1,Cuota_1,Apuesta_1,Casa_2,Cuota_2,Apuesta_2,Inversion_Total,Estado,Ganador Final,Retorno Final,Rentabilidad,Tipo_Operacion,Modalidad
+20260324001,2026-03-24,1xBet,2.07,51000.0,Betano,2.1,50000.0,101000.0,Abierta,-,0.0,0.0,Surebet,
+20260324002,2026-03-24,1xBet,5.36,3000.0,1xBet,1.0,0.0,3000.0,Cerrada,1xBet,13080.0,436.0,Maquillaje,Combinada
+20260324003,2026-03-24,1xBet,2.0,10000.0,1xBet,1.0,0.0,10000.0,Abierta,-,0.0,0.0,Maquillaje,Simple
+20260324004,2026-03-24,1xBet,2.0,50000.0,Betano,2.01,50000.0,100000.0,Abierta,-,0.0,0.0,Surebet,
+20260324005,2026-03-24,1xBet,2.03,50000.0,1xBet,2.04,50000.0,100000.0,Abierta,-,0.0,0.0,Surebet,
+20260324006,2026-03-24,Betano,2.32,90000.0,Betplay,1.88,111000.0,201000.0,Abierta,-,0.0,0.0,Surebet,N/A
