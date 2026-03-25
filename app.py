@@ -120,6 +120,16 @@ def liquidar_linea(row):
         pass 
     return row
 
+def limpiar_monto(valor):
+    if valor is None:
+        return 0.0
+    texto = str(valor)
+    texto = texto.replace("$", "").replace(",", "").replace(" ", "")
+    texto = texto.replace("%", "")
+    if texto in ["", "-", "nan", "None"]:
+        return 0.0
+    return pd.to_numeric(texto, errors="coerce")
+
 def obtener_sheet_id():
     if "google_sheet_id" in st.secrets:
         return st.secrets["google_sheet_id"]
@@ -288,6 +298,8 @@ def sincronizar_cambios_editor():
                 if col_name == "N°":
                     continue
                 df_actual.at[actual_idx, col_name] = new_val
+                if col_name in ["Estado", "Ganador Final"]:
+                    st.session_state["cerrar_id"] = df_actual.at[actual_idx, "ID"]
             
             # Lógica inteligente: Si cambiaron datos clave, intentar recalcular liquidación
             df_actual.iloc[actual_idx] = liquidar_linea(df_actual.iloc[actual_idx])
@@ -533,42 +545,79 @@ st.data_editor(
         "Casa_2": st.column_config.SelectboxColumn("Casa 2", options=CASAS_DISPONIBLES, required=True),
         "Estado": st.column_config.SelectboxColumn("Estado", options=["Abierta", "Cerrada"], required=True),
         "Ganador Final": st.column_config.TextColumn("Ganador Final", help="Debe coincidir con una casa"),
-        "Rentabilidad": st.column_config.NumberColumn("Rent (%)", format="%.2f"),
-        "Retorno Final": st.column_config.NumberColumn("Retorno ($)", format="$%.2f"),
-        "Inversion_Total": st.column_config.NumberColumn("Inversión", format="$%.0f"),
-        "Apuesta_1": st.column_config.NumberColumn("Apuesta 1", format="$%.0f"),
-        "Apuesta_2": st.column_config.NumberColumn("Apuesta 2", format="$%.0f"),
+        "Cuota_1": st.column_config.NumberColumn("Cuota 1", format="%.2f"),
+        "Cuota_2": st.column_config.NumberColumn("Cuota 2", format="%.2f"),
+        "Rentabilidad": st.column_config.NumberColumn("Rent (%)", format="%.2f %%"),
+        "Retorno Final": st.column_config.NumberColumn("Retorno ($)", format="$%,.0f"),
+        "Inversion_Total": st.column_config.NumberColumn("Inversión", format="$%,.0f"),
+        "Apuesta_1": st.column_config.NumberColumn("Apuesta 1", format="$%,.0f"),
+        "Apuesta_2": st.column_config.NumberColumn("Apuesta 2", format="$%,.0f"),
     },
     key="editor_historial",
     on_change=sincronizar_cambios_editor
 )
 st.session_state["mapa_indices"] = df_filtrado.index.to_list()
 
-# Panel de Cierre Rápido (Simplificado)
-pendientes = df_historial[df_historial['Estado'] == 'Abierta']
+# Panel de Cierre de Operaciones
+pendientes = df_filtrado[df_filtrado['Estado'] == 'Abierta']
 if not pendientes.empty:
-    with st.expander("⚡ Cierre Rápido de Apuestas (Pendientes)"):
-        cols_close = st.columns([2, 1, 1])
-        with cols_close[0]:
-            id_sel = st.selectbox("Selecciona Apuesta", pendientes['ID'].tolist(), format_func=lambda x: f"ID: {x} | {pendientes[pendientes['ID']==x]['Fecha'].values[0]}")
-        
+    with st.expander("⚡ Cerrar Operación", expanded=True):
+        ids_disponibles = pendientes['ID'].tolist()
+        id_preseleccion = st.session_state.get("cerrar_id")
+        id_sel = st.selectbox(
+            "Selecciona Operación",
+            ids_disponibles,
+            index=ids_disponibles.index(id_preseleccion) if id_preseleccion in ids_disponibles else 0,
+            format_func=lambda x: f"ID: {x} | {pendientes[pendientes['ID']==x]['Fecha'].values[0]}"
+        )
+
         idx = df_historial.index[df_historial['ID'] == id_sel][0]
         row_sel = df_historial.loc[idx]
+        inv = float(pd.to_numeric(row_sel.get("Inversion_Total", 0), errors="coerce") or 0.0)
+        ap1 = float(pd.to_numeric(row_sel.get("Apuesta_1", 0), errors="coerce") or 0.0)
+        ap2 = float(pd.to_numeric(row_sel.get("Apuesta_2", 0), errors="coerce") or 0.0)
+        c1 = float(pd.to_numeric(row_sel.get("Cuota_1", 0), errors="coerce") or 0.0)
+        c2 = float(pd.to_numeric(row_sel.get("Cuota_2", 0), errors="coerce") or 0.0)
 
-        with cols_close[1]:
-            if st.button(f"🏆 Ganó {row_sel['Casa_1']} (@{row_sel['Cuota_1']})", use_container_width=True):
-                df_historial.at[idx, "Ganador Final"] = row_sel['Casa_1']
+        if row_sel.get("Tipo_Operacion") == "Maquillaje":
+            resultado = st.radio("Resultado", ["Ganó", "Perdió"], horizontal=True)
+            if st.button("Cerrar operación", use_container_width=True):
+                if resultado == "Ganó":
+                    ganancia = (ap1 * c1) - inv
+                    df_historial.at[idx, "Ganador Final"] = row_sel["Casa_1"]
+                else:
+                    ganancia = -inv
+                    df_historial.at[idx, "Ganador Final"] = "Perdida"
                 df_historial.at[idx, "Estado"] = "Cerrada"
-                df_historial.iloc[idx] = liquidar_linea(df_historial.iloc[idx])
+                df_historial.at[idx, "Retorno Final"] = round(ganancia, 2)
+                df_historial.at[idx, "Rentabilidad"] = round((ganancia / inv) * 100, 2) if inv else 0.0
                 if guardar_excel(df_historial, df_movimientos):
                     st.rerun()
-        with cols_close[2]:
-            if st.button(f"🏆 Ganó {row_sel['Casa_2']} (@{row_sel['Cuota_2']})", use_container_width=True):
-                df_historial.at[idx, "Ganador Final"] = row_sel['Casa_2']
-                df_historial.at[idx, "Estado"] = "Cerrada"
-                df_historial.iloc[idx] = liquidar_linea(df_historial.iloc[idx])
-                if guardar_excel(df_historial, df_movimientos):
-                    st.rerun()
+        else:
+            modo = st.selectbox("Tipo de cierre", ["Casa 1 gana", "Casa 2 gana", "Personalizado"])
+            if modo == "Personalizado":
+                r1, r2 = st.columns(2)
+                with r1:
+                    retorno_casa_1 = st.number_input("Retorno Casa 1", min_value=0.0, value=ap1 * c1, step=1000.0)
+                with r2:
+                    retorno_casa_2 = st.number_input("Retorno Casa 2", min_value=0.0, value=ap2 * c2, step=1000.0)
+                if st.button("Cerrar operación", use_container_width=True):
+                    retorno_total = retorno_casa_1 + retorno_casa_2
+                    ganancia = retorno_total - inv
+                    df_historial.at[idx, "Estado"] = "Cerrada"
+                    df_historial.at[idx, "Ganador Final"] = "Personalizado"
+                    df_historial.at[idx, "Retorno Final"] = round(ganancia, 2)
+                    df_historial.at[idx, "Rentabilidad"] = round((ganancia / inv) * 100, 2) if inv else 0.0
+                    if guardar_excel(df_historial, df_movimientos):
+                        st.rerun()
+            else:
+                if st.button("Cerrar operación", use_container_width=True):
+                    ganador = row_sel["Casa_1"] if modo == "Casa 1 gana" else row_sel["Casa_2"]
+                    df_historial.at[idx, "Ganador Final"] = ganador
+                    df_historial.at[idx, "Estado"] = "Cerrada"
+                    df_historial.iloc[idx] = liquidar_linea(df_historial.iloc[idx])
+                    if guardar_excel(df_historial, df_movimientos):
+                        st.rerun()
 
 st.divider()
 st.subheader("💼 Movimientos de Caja")
@@ -616,7 +665,7 @@ st.data_editor(
         "Fecha": st.column_config.TextColumn("Fecha"),
         "Casa": st.column_config.SelectboxColumn("Casa", options=CASAS_DISPONIBLES),
         "Tipo": st.column_config.SelectboxColumn("Tipo", options=["Depósito", "Retiro"]),
-        "Monto": st.column_config.NumberColumn("Monto", format="$%.0f"),
+        "Monto": st.column_config.NumberColumn("Monto", format="$%,.0f"),
         "Nota": st.column_config.TextColumn("Nota")
     },
     key="editor_movimientos",
@@ -624,65 +673,87 @@ st.data_editor(
 )
 
 st.divider()
-st.subheader("📥 Importar Excel")
-archivo_importado = st.file_uploader("Sube tu archivo XLSX", type=["xlsx"])
-if archivo_importado:
+with st.expander("🗂️ Importar / Exportar / Borrar", expanded=True):
+    st.subheader("📥 Importar Excel")
+    archivo_importado = st.file_uploader("Sube tu archivo XLSX", type=["xlsx"])
+    if archivo_importado:
+        try:
+            df_ops_imp = pd.read_excel(archivo_importado, sheet_name=hoja_operaciones, dtype={'ID': str})
+        except Exception:
+            df_ops_imp = pd.read_excel(archivo_importado, dtype={'ID': str})
+        try:
+            df_mov_imp = pd.read_excel(archivo_importado, sheet_name=hoja_movimientos)
+        except Exception:
+            df_mov_imp = pd.DataFrame()
+
+        if "Tipo" in df_ops_imp.columns and "Tipo_Operacion" not in df_ops_imp.columns:
+            df_ops_imp = df_ops_imp.rename(columns={"Tipo": "Tipo_Operacion"})
+
+        for col in ["Apuesta_1", "Apuesta_2", "Inversion_Total", "Retorno Final"]:
+            if col in df_ops_imp.columns:
+                df_ops_imp[col] = df_ops_imp[col].apply(limpiar_monto)
+        for col in ["Cuota_1", "Cuota_2"]:
+            if col in df_ops_imp.columns:
+                df_ops_imp[col] = pd.to_numeric(df_ops_imp[col], errors="coerce").fillna(0.0)
+        if "Rentabilidad" in df_ops_imp.columns:
+            df_ops_imp["Rentabilidad"] = df_ops_imp["Rentabilidad"].apply(limpiar_monto)
+        if "Ganador Final" in df_ops_imp.columns:
+            df_ops_imp["Ganador Final"] = df_ops_imp["Ganador Final"].fillna("-")
+
+        if "Monto" in df_mov_imp.columns:
+            df_mov_imp["Monto"] = df_mov_imp["Monto"].apply(limpiar_monto)
+        if "Tipo" in df_mov_imp.columns:
+            df_mov_imp["Tipo"] = df_mov_imp["Tipo"].replace({"Deposito": "Depósito"})
+
+        df_ops_imp = normalizar_historial(df_ops_imp)
+        df_mov_imp = normalizar_movimientos(df_mov_imp)
+
+        if st.button("✅ Importar y reemplazar datos", use_container_width=True):
+            if guardar_excel(df_ops_imp, df_mov_imp):
+                st.success("Datos importados correctamente.")
+                st.rerun()
+
+    st.subheader("⬇️ Exportar Excel")
+    df_ops_export, df_mov_export = cargar_datos()
+    df_ops_export = normalizar_historial(df_ops_export)
+    df_mov_export = normalizar_movimientos(df_mov_export)
     try:
-        df_ops_imp = pd.read_excel(archivo_importado, sheet_name=hoja_operaciones, dtype={'ID': str})
+        buffer = io.BytesIO()
+        with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
+            df_ops_export.to_excel(writer, sheet_name=hoja_operaciones, index=False)
+            df_mov_export.to_excel(writer, sheet_name=hoja_movimientos, index=False)
+        buffer.seek(0)
+        st.download_button(
+            label="Descargar Excel",
+            data=buffer,
+            file_name=archivo_excel,
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True
+        )
     except Exception:
-        df_ops_imp = pd.read_excel(archivo_importado, dtype={'ID': str})
-    try:
-        df_mov_imp = pd.read_excel(archivo_importado, sheet_name=hoja_movimientos)
-    except Exception:
-        df_mov_imp = pd.DataFrame()
+        st.error("No se pudo generar el archivo de exportación.")
 
-    df_ops_imp = normalizar_historial(df_ops_imp)
-    df_mov_imp = normalizar_movimientos(df_mov_imp)
+    st.subheader("🗑️ Borrar Historial Completo")
+    if st.button("Eliminar todo", type="secondary", use_container_width=True):
+        st.session_state["confirmar_borrado"] = True
+        st.rerun()
 
-    if st.button("✅ Importar y reemplazar datos", use_container_width=True):
-        if guardar_excel(df_ops_imp, df_mov_imp):
-            st.success("Datos importados correctamente.")
-            st.rerun()
-
-st.divider()
-st.subheader("⬇️ Exportar Excel")
-df_ops_export, df_mov_export = cargar_datos()
-df_ops_export = normalizar_historial(df_ops_export)
-df_mov_export = normalizar_movimientos(df_mov_export)
-try:
-    buffer = io.BytesIO()
-    with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
-        df_ops_export.to_excel(writer, sheet_name=hoja_operaciones, index=False)
-        df_mov_export.to_excel(writer, sheet_name=hoja_movimientos, index=False)
-    buffer.seek(0)
-    st.download_button(
-        label="Descargar Excel",
-        data=buffer,
-        file_name=archivo_excel,
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        use_container_width=True
-    )
-except Exception:
-    st.error("No se pudo generar el archivo de exportación.")
-
-# Sistema de borrado con confirmación
-if st.button("🗑️ Borrar Historial Completo", type="secondary"):
-    st.session_state["confirmar_borrado"] = True
-    st.rerun()
-
-if st.session_state.get("confirmar_borrado"):
-    st.warning("⚠️ ¿Estás seguro? Esta acción eliminará permanentemente todo el historial.")
-    col_conf_1, col_conf_2 = st.columns([1, 1])
-    with col_conf_1:
-        if st.button("✅ Sí, eliminar todo", type="primary", use_container_width=True):
-            if os.path.exists(archivo_excel):
-                os.remove(archivo_excel)
-            if os.path.exists(archivo_csv):
-                os.remove(archivo_csv)
-            st.session_state["confirmar_borrado"] = False
-            st.success("Historial eliminado.")
-            st.rerun()
-    with col_conf_2:
-        if st.button("❌ Cancelar", type="secondary", use_container_width=True):
-            st.session_state["confirmar_borrado"] = False
-            st.rerun()
+    if st.session_state.get("confirmar_borrado"):
+        st.warning("⚠️ ¿Estás seguro? Esta acción eliminará permanentemente todo el historial.")
+        col_conf_1, col_conf_2 = st.columns([1, 1])
+        with col_conf_1:
+            if st.button("✅ Sí, eliminar todo", type="primary", use_container_width=True):
+                df_vacio_ops = normalizar_historial(pd.DataFrame())
+                df_vacio_mov = normalizar_movimientos(pd.DataFrame())
+                guardar_excel(df_vacio_ops, df_vacio_mov)
+                if os.path.exists(archivo_excel):
+                    os.remove(archivo_excel)
+                if os.path.exists(archivo_csv):
+                    os.remove(archivo_csv)
+                st.session_state["confirmar_borrado"] = False
+                st.success("Historial eliminado.")
+                st.rerun()
+        with col_conf_2:
+            if st.button("❌ Cancelar", type="secondary", use_container_width=True):
+                st.session_state["confirmar_borrado"] = False
+                st.rerun()
