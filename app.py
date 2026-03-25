@@ -624,6 +624,27 @@ st.data_editor(
 )
 
 st.divider()
+st.subheader("📥 Importar Excel")
+archivo_importado = st.file_uploader("Sube tu archivo XLSX", type=["xlsx"])
+if archivo_importado:
+    try:
+        df_ops_imp = pd.read_excel(archivo_importado, sheet_name=hoja_operaciones, dtype={'ID': str})
+    except Exception:
+        df_ops_imp = pd.read_excel(archivo_importado, dtype={'ID': str})
+    try:
+        df_mov_imp = pd.read_excel(archivo_importado, sheet_name=hoja_movimientos)
+    except Exception:
+        df_mov_imp = pd.DataFrame()
+
+    df_ops_imp = normalizar_historial(df_ops_imp)
+    df_mov_imp = normalizar_movimientos(df_mov_imp)
+
+    if st.button("✅ Importar y reemplazar datos", use_container_width=True):
+        if guardar_excel(df_ops_imp, df_mov_imp):
+            st.success("Datos importados correctamente.")
+            st.rerun()
+
+st.divider()
 st.subheader("⬇️ Exportar Excel")
 df_ops_export, df_mov_export = cargar_datos()
 df_ops_export = normalizar_historial(df_ops_export)
