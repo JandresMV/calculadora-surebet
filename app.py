@@ -558,8 +558,23 @@ st.data_editor(
 )
 st.session_state["mapa_indices"] = df_filtrado.index.to_list()
 
+pendientes = df_filtrado[df_filtrado["Estado"] == "Abierta"]
+if not pendientes.empty:
+    with st.expander("✅ Seleccionar para cerrar", expanded=False):
+        for _, fila in pendientes.iterrows():
+            c1, c2, c3, c4 = st.columns([2, 2, 2, 1])
+            with c1:
+                st.write(fila.get("ID", ""))
+            with c2:
+                st.write(f"{fila.get('Casa_1', '')} / {fila.get('Casa_2', '')}")
+            with c3:
+                st.write(fila.get("Tipo_Operacion", ""))
+            with c4:
+                if st.button("Cerrar", key=f"cerrar_{fila.get('ID','')}"):
+                    st.session_state["cerrar_id"] = fila.get("ID", "")
+                    st.rerun()
+
 # Panel de Cierre de Operaciones
-pendientes = df_filtrado[df_filtrado['Estado'] == 'Abierta']
 if not pendientes.empty:
     with st.expander("⚡ Cerrar Operación", expanded=True):
         ids_disponibles = pendientes['ID'].tolist()
